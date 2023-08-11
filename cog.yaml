@@ -1,0 +1,13 @@
+# Configuration for Cog ⚙️
+build:
+  gpu: true
+  python_version: "3.11"
+  python_packages:
+    - "torch==2.0.0"
+    - "transformers"
+    - "accelerate"
+    - "bitsandbytes"
+    - "scipy"
+
+# predict.py defines how predictions are run on your model
+predict: "predict.py:Predictor"
