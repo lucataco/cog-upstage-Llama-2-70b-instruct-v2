@@ -1,39 +1,53 @@
 # Prediction interface for Cog ⚙️
 # https://github.com/replicate/cog/blob/main/docs/python.md
 
-from cog import BasePredictor, Input, Path
+from cog import BasePredictor, Input
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
+from transformers import AutoTokenizer, pipeline
+from auto_gptq import AutoGPTQForCausalLM
 
-MODEL_NAME = "upstage/Llama-2-70b-instruct-v2"
-MODEL_CACHE = "model-cache"
-TOKEN_CACHE = "token-cache"
+MODEL_NAME = "TheBloke/Upstage-Llama-2-70B-instruct-v2-GPTQ"
+MODEL_BASENAME = "gptq_model-4bit--1g"
+CACHE = "cache"
+use_triton = True
 
 class Predictor(BasePredictor):
     def setup(self) -> None:
         """Load the model into memory to make running multiple predictions efficient"""
-        self.tokenizer = AutoTokenizer.from_pretrained(TOKEN_CACHE)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            MODEL_CACHE,
-            device_map="auto",
-            torch_dtype=torch.float16,
-            load_in_8bit=True,
-            rope_scaling={"type": "dynamic", "factor": 2} # allows handling of longer inputs
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            CACHE,
+            use_fast=True,
+        )
+        self.model = AutoGPTQForCausalLM.from_quantized(
+            CACHE,
+            inject_fused_attention=False,
+            use_safetensors=True,
+            device="cuda:0",
+            use_triton=use_triton,
+            quantize_config=None
         )
 
     def predict(
         self,
-        prompt: str = Input(description="Your prompt", default="Thomas is healthy, but he has to go to the hospital. What could be the reasons?"),
-        new_tokens: int = Input(description="Generate at most this many new tokens in the response", ge=0, le=9216, default=1024),
+        prompt: str = Input(description="Prompt to send to model", default="Tell me about AI"),
+        system_prompt: str = Input(description="System prompt that helps guide system behavior", default="You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature. If a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."),
+        max_new_tokens: int = Input(description="Number of new tokens", ge=1, le=2048 , default=512),
+        temperature: float = Input(description="Randomness of outputs, 0 is deterministic, greater than 1 is random", ge=0, le=5, default=0.75),
+        top_p: float = Input(description="When decoding text, samples from the top p percentage of most likely tokens; lower to ignore less likely tokens", ge=0.01, le=1, default=0.95),
+        repetition_penalty: float = Input(description="Penalty for repeated words in generated text; 1 is no penalty, values greater than 1 discourage repetition, less than 1 encourage it", ge=0, le=5, default=1.1),
     ) -> str:
         """Run a single prediction on the model"""
-        full_prompt = f"### User:\n{prompt}\n\n### Assistant:\n"
+        prompt_template=f'''### System:
+        {system_prompt}
+        ### User:
+        {prompt}
+        ### Assistant:'''
 
-        inputs = self.tokenizer(full_prompt, return_tensors="pt").to("cuda")
-        del inputs["token_type_ids"]
-        streamer = TextStreamer(self.tokenizer, skip_prompt=True, skip_special_tokens=True)
+        input_ids = self.tokenizer(prompt_template, return_tensors='pt').input_ids.cuda()
+        outputs = self.model.generate(inputs=input_ids, temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty, max_new_tokens=max_new_tokens)
+        output = self.tokenizer.decode(outputs[0])
+        parts = output.split("Assistant:", 1)
+        final = parts[1]
 
-        outputs = self.model.generate(**inputs, streamer=streamer, use_cache=True, max_new_tokens=new_tokens)
-        output = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-
-        return output
+        return final
+    

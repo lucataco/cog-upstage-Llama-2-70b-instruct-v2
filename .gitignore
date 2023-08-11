@@ -1,4 +1,3 @@
 __pycache__
 .cog
-model-cache
-token-cache
+cache

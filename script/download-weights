@@ -2,30 +2,29 @@
 
 import os
 import sys
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
+from auto_gptq import AutoGPTQForCausalLM
 
 # append project directory to path so predict.py can be imported
 sys.path.append('.')
 
-from predict import MODEL_NAME, MODEL_CACHE, TOKEN_CACHE
+from predict import MODEL_NAME, MODEL_BASENAME, CACHE
+use_triton = True
 
-# Make cache folders
-if not os.path.exists(MODEL_CACHE):
-    os.makedirs(MODEL_CACHE)
+# tokenizer = AutoTokenizer.from_pretrained(
+#     MODEL_NAME,
+#     use_fast=True,
+# )
+# tokenizer.save_pretrained(CACHE, safe_serialization=True)
 
-if not os.path.exists(TOKEN_CACHE):
-    os.makedirs(TOKEN_CACHE)
+# model = AutoGPTQForCausalLM.from_quantized(
+#     MODEL_NAME,
+#     model_basename=MODEL_BASENAME,
+#     use_safetensors=True,
+#     trust_remote_code=True,
+#     use_triton=use_triton,
+# )
+# model.save_quantized(CACHE, use_safetensors=True)
 
-tokenizer = AutoTokenizer.from_pretrained(
-    MODEL_NAME,
-    cache_dir=TOKEN_CACHE,
-)
-
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    torch_dtype=torch.float16,
-    load_in_8bit=True,
-    rope_scaling={"type": "dynamic", "factor": 2},
-    cache_dir=MODEL_CACHE,
-)
+# Manually run:
+os.system("git clone --branch gptq-4bit-32g-actorder_True https://huggingface.co/TheBloke/Upstage-Llama-2-70B-instruct-v2-GPTQ cache")
